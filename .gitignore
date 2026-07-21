@@ -1,2 +1,3 @@
 data/wikipedia/
 data/indexes/embeddings/
+data/processed/processed_chunks.jsonl
