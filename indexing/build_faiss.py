@@ -16,17 +16,9 @@ EMBEDDINGS_DIR = (
     / "embeddings"
 )
 
-METADATA_FILE = (
-    EMBEDDINGS_DIR
-    / "metadata.json"
-)
+METADATA_FILE = (EMBEDDINGS_DIR/ "metadata.json")
 
-INDEX_FILE = (
-    BASE_DIR
-    / "data"
-    / "indexes"
-    / "faiss.index"
-)
+INDEX_FILE = (BASE_DIR / "data" / "indexes" / "faiss.index")
 
 
 def load_metadata(metadata_file: Path) -> dict:
@@ -104,3 +96,6 @@ def main():
     print("\n===== Index FAISS terminé =====")
     print(f"Vecteurs indexés : {total_vectors}")
     print(f"Dimension         : {metadata['embedding_dimension']}")
+
+if __name__ == "__main__":
+    main()

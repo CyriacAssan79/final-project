@@ -1,3 +1,5 @@
 data/wikipedia/
 data/indexes/embeddings/
 data/processed/processed_chunks.jsonl
+data/indexes/faiss.index
+data/indexes/chunks.db
