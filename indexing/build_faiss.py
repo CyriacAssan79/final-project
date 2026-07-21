@@ -34,10 +34,7 @@ def load_metadata(metadata_file: Path) -> dict:
     Charge les métadonnées des embeddings.
     """
 
-    with metadata_file.open(
-        "r",
-        encoding="utf-8"
-    ) as f:
+    with metadata_file.open("r",encoding="utf-8") as f:
 
         return json.load(f)
     
