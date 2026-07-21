@@ -167,7 +167,7 @@ class DocumentRetriever:
 retriever = DocumentRetriever()
 
 results = retriever.search(
-    query="Who was the first president of the United States?",
+    query="Nikolaj Coster-Waldau worked with the Fox Broadcasting Company.",
     top_k=5
 )
 

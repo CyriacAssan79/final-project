@@ -66,6 +66,12 @@ class PassageRetriever:
             "chunk_id": result["chunk_id"],
             "doc_id": result["doc_id"],
             "title": result["title"],
+            "source": result["source"],
+            "start_sentence": result["start_sentence"],
+            "end_sentence": result["end_sentence"],
+            "sentence_ids": result["sentence_ids"],
+            "num_sentences": result["num_sentences"],
+            "text_length": result["text_length"],
             "text": result["text"],
             "score": result["score"],
         }
@@ -81,7 +87,7 @@ retriever = DocumentRetriever()
 
 passage_retriever = PassageRetriever(retriever)
 
-results = passage_retriever.retrieve(query="Who was the first president of the United States?",top_k=50)
+results = passage_retriever.retrieve(query="Nikolaj Coster-Waldau worked with the Fox Broadcasting Company.",top_k=50)
 
 for result in results:
     print("=" * 80)
