@@ -4,7 +4,7 @@ from pathlib import Path
 from retrieval.document_retriever import DocumentRetriever
 from retrieval.passage_retriever import PassageRetriever
 from retrieval.reranker import Reranker
-
+from verification.verifier import Verifier
 
 # =============================================================================
 # CONFIGURATION
@@ -138,7 +138,7 @@ def gold_evidence_exists_in_database(
 # =============================================================================
 # DEBUG
 # =============================================================================
-def debug_example(example: dict,passage_retriever: PassageRetriever,reranker: Reranker):
+def debug_example(example: dict,passage_retriever: PassageRetriever,reranker: Reranker,verifier: Verifier):
     claim = example["claim"]
 
     gold_evidence = extract_gold_evidence(
@@ -328,6 +328,39 @@ def debug_example(example: dict,passage_retriever: PassageRetriever,reranker: Re
         top_k=10
     )
 
+    # -------------------------------------------------------------------------
+    # VÉRIFICATION
+    # -------------------------------------------------------------------------
+
+    verification_result = verifier.verify(claim=claim,evidence=reranked_results)
+
+    print()
+    print("=" * 100)
+    print("RÉSULTAT FINAL DE LA VÉRIFICATION")
+    print("=" * 100)
+
+    print()
+    print(f"CLAIM : {claim}")
+
+    print()
+    print(f"LABEL : {verification_result['label']}")
+
+    print()
+    print(f"CONFIANCE : {verification_result['confidence']:.4f}")
+
+    print()
+    print("=" * 100)
+    print("PRÉDICTIONS SUR LES PREUVES")
+    print("=" * 100)
+
+    for prediction in (verification_result["evidence"]):
+        print()
+        print(f"DOCUMENT : {prediction['doc_id']}")
+        print(f"TITRE : {prediction['title']}")
+        print(f"LABEL NLI : {prediction['nli_label']}")
+        print(f"LABEL FEVER : {prediction['fever_label']}")
+        print(f"CONFIANCE : {prediction['confidence']:.4f}")
+
     # =========================================================================
     # RÉSULTATS APRÈS RERANKING
     # =========================================================================
@@ -337,19 +370,8 @@ def debug_example(example: dict,passage_retriever: PassageRetriever,reranker: Re
     print("RÉSULTATS APRÈS RERANKING")
     print("=" * 100)
 
-    for rank, passage in enumerate(
-        reranked_results,
-        start=1
-    ):
-
-        is_gold = any(
-            (
-                passage["doc_id"],
-                sentence_id
-            )
-            in gold_evidence
-            for sentence_id in passage["sentence_ids"]
-        )
+    for rank, passage in enumerate(reranked_results,start=1):
+        is_gold = any((passage["doc_id"], sentence_id) in gold_evidence for sentence_id in passage["sentence_ids"])
 
         print()
         print(f"RANG : {rank}")
@@ -362,24 +384,13 @@ def debug_example(example: dict,passage_retriever: PassageRetriever,reranker: Re
         print(f"TEXTE : {passage['text'][:1000]}")
 
 
-def find_gold_in_results(
-    results: list[dict],
-    gold_evidence: set[tuple[str, int]]
-):
+def find_gold_in_results(results: list[dict],gold_evidence: set[tuple[str, int]]):
 
     matches = []
 
-    for rank, result in enumerate(
-        results,
-        start=1
-    ):
-
+    for rank, result in enumerate(results,start=1):
         for sentence_id in result["sentence_ids"]:
-
-            if (
-                result["doc_id"],
-                sentence_id
-            ) in gold_evidence:
+            if (result["doc_id"],sentence_id) in gold_evidence:
 
                 matches.append(
                     {
@@ -466,36 +477,21 @@ def inspect_gold_chunk(
 # =============================================================================
 # MAIN
 # =============================================================================
-
 if __name__ == "__main__":
 
-    examples = load_examples(
-        DEV_FILE
-    )
-
+    examples = load_examples(DEV_FILE)
     print("Recherche d'un exemple couvert par le corpus...")
-
     print()
 
     # =========================================================================
     # CHARGEMENT DU DOCUMENT RETRIEVER
     # =========================================================================
 
-    print(
-        "Chargement du DocumentRetriever..."
-    )
+    print("Chargement du DocumentRetriever...")
 
     document_retriever = DocumentRetriever()
 
-    inspect_gold_chunk(
-        doc_id="Andrew_Kevin_Walker",
-        sentence_id=0,
-        document_retriever=document_retriever
-        )
-
-    passage_retriever = PassageRetriever(
-        document_retriever
-    )
+    passage_retriever = PassageRetriever(document_retriever)
 
     # =========================================================================
     # RECHERCHE D'UN EXEMPLE COUVERT PAR LE CORPUS
@@ -505,39 +501,24 @@ if __name__ == "__main__":
 
     for candidate in examples:
 
-        gold_evidence = extract_gold_evidence(
-            candidate
-        )
+        gold_evidence = extract_gold_evidence(candidate)
 
-        # On ignore les exemples NOT ENOUGH INFO
+        # On ignore les exemples
+        # NOT ENOUGH INFO
+
         if not gold_evidence:
-
             continue
 
-        # Vérifie si au moins un document gold
-        # existe dans la base SQLite
-        coverage = check_gold_coverage(
-            candidate,
-            document_retriever.connection
-        )
+        coverage = check_gold_coverage(candidate,document_retriever.connection)
 
-        has_coverage = any(
-            item["exists"]
-            for item in coverage
-        )
+        has_coverage = any(item["exists"] for item in coverage)
 
         if has_coverage:
-
             example = candidate
-
             break
 
     if example is None:
-
-        raise RuntimeError(
-            "Aucun exemple avec une preuve présente "
-            "dans le corpus indexé."
-        )
+        raise RuntimeError("Aucun exemple avec une preuve présente dans le corpus indexé.")
 
     # =========================================================================
     # AFFICHAGE DE L'EXEMPLE SÉLECTIONNÉ
@@ -545,32 +526,162 @@ if __name__ == "__main__":
 
     print()
 
-    print(
-        "Exemple couvert trouvé :"
-    )
+    print("Exemple couvert trouvé :")
+    print(example["claim"])
+    print()
 
-    print(
-        example["claim"]
+    # =========================================================================
+    # CHARGEMENT DES MODÈLES
+    # =========================================================================
+
+    print("Chargement du Reranker...")
+
+    reranker = Reranker()
+    print("Chargement du Verifier...")
+
+    verifier = Verifier()
+
+    # =========================================================================
+    # RETRIEVAL
+    # =========================================================================
+
+    passages = passage_retriever.retrieve(query=example["claim"],top_k=50)
+
+    # =========================================================================
+    # RERANKING
+    # =========================================================================
+
+    reranked_results = reranker.rerank(query=example["claim"],passages=passages,top_k=5)
+
+    # =========================================================================
+    # DEBUG RETRIEVAL + RERANKING
+    # =========================================================================
+
+    debug_example(example,passage_retriever,reranker,verifier)
+
+    # =========================================================================
+    # VÉRIFICATION NLI
+    # =========================================================================
+
+    verification_result = verifier.verify(claim=example["claim"],evidence=reranked_results)
+
+    # =========================================================================
+    # TEST DU VERIFIER
+    # =========================================================================
+
+    verification_result = verifier.verify(
+        claim=example["claim"],
+        evidence=reranked_results
     )
 
     print()
 
-    # =========================================================================
-    # CHARGEMENT DU RERANKER
-    # =========================================================================
+    print(
+        "=" * 100
+    )
 
     print(
-        "Chargement du Reranker..."
+        "RÉSULTAT DE LA VÉRIFICATION"
     )
 
-    reranker = Reranker()
-
-    # =========================================================================
-    # DEBUG COMPLET
-    # =========================================================================
-
-    debug_example(
-        example,
-        passage_retriever,
-        reranker
+    print(
+        "=" * 100
     )
+
+    print()
+
+    print(
+        f"CLAIM : "
+        f"{example['claim']}"
+    )
+
+    print()
+
+    print(
+        f"LABEL FINAL : "
+        f"{verification_result['label']}"
+    )
+
+    print(
+        f"CONFIANCE : "
+        f"{verification_result['confidence']:.4f}"
+    )
+
+    print()
+
+    print(
+        "SCORES PAR LABEL"
+    )
+
+    print(
+        verification_result[
+            "label_scores"
+        ]
+    )
+
+    print()
+
+    print(
+        "MEILLEURE PREUVE INDIVIDUELLE"
+    )
+
+    best_evidence = (
+        verification_result[
+            "best_evidence"
+        ]
+    )
+
+    print()
+
+    print(
+        f"DOCUMENT : "
+        f"{best_evidence['doc_id']}"
+    )
+
+    print(
+        f"LABEL NLI : "
+        f"{best_evidence['nli_label']}"
+    )
+
+    print(
+        f"LABEL FEVER : "
+        f"{best_evidence['fever_label']}"
+    )
+
+    print(
+        f"CONFIANCE : "
+        f"{best_evidence['confidence']:.4f}"
+    )
+
+    # =========================================================================
+    # AFFICHAGE DU RÉSULTAT
+    # =========================================================================
+
+    print()
+
+    print("=" * 100)
+
+    print("RÉSULTAT DE LA VÉRIFICATION")
+
+    print("=" * 100)
+
+    print()
+    print(f"CLAIM : {example['claim']}")
+    print()
+
+    print(f"LABEL : {verification_result['label']}")
+    print()
+
+    print(f"CONFIANCE : {verification_result['confidence']:.4f}")
+    print()
+    print("=" * 100)
+    print("DÉTAIL DES PRÉDICTIONS")
+    print("=" * 100)
+
+    for prediction in verification_result["evidence"]:
+        print()
+
+        print(f"DOCUMENT : {prediction['doc_id']}")
+        print(f"LABEL NLI : {prediction['nli_label']}")
+        print(f"LABEL FEVER : {prediction['fever_label']}")
+        print(f"CONFIANCE : {prediction['confidence']:.4f}")

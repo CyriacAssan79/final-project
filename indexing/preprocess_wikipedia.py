@@ -17,7 +17,7 @@ SMALL_ARTICLE_THRESHOLD = 5
 
 CHUNK_SIZE = 5
 CHUNK_OVERLAP = 2
-MAX_FILES = 10  # None = tous les fichiers
+MAX_FILES = 2  # None = tous les fichiers
 
 
 # load_articles()
