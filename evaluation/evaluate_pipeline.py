@@ -5,6 +5,7 @@ from retrieval.document_retriever import DocumentRetriever
 from retrieval.passage_retriever import PassageRetriever
 from retrieval.reranker import Reranker
 from verification.verifier import Verifier
+from evaluation.metrics import expected_calibration_error
 
 
 # =============================================================================
@@ -209,6 +210,8 @@ def evaluate_pipeline(
     skipped_examples = 0
 
     detailed_results = []
+    confidences = []
+    correctness_values = []
 
     # -------------------------------------------------------------------------
     # ÉVALUATION
@@ -384,6 +387,9 @@ def evaluate_pipeline(
 
             correct_labels += 1
 
+        confidences.append(float(verification_result["confidence"]))
+        correctness_values.append(label_correct)
+
         # ---------------------------------------------------------------------
         # FEVER SCORE
         # ---------------------------------------------------------------------
@@ -450,6 +456,12 @@ def evaluate_pipeline(
         else 0.0
     )
 
+    ece = expected_calibration_error(
+        confidences=confidences,
+        correctness=correctness_values,
+        n_bins=10,
+    )
+
     return {
         "evaluated_examples": evaluated_examples,
         "skipped_examples": skipped_examples,
@@ -459,6 +471,7 @@ def evaluate_pipeline(
         "evidence_recall": evidence_recall,
         "mrr": mrr,
         "fever_score": fever_score,
+        "ece": ece,
         "detailed_results": detailed_results
     }
 
@@ -554,6 +567,7 @@ if __name__ == "__main__":
     print(f"MRR :{results['mrr']:.4f}")
     print()
     print(f"FEVER Score : {results['fever_score']:.4f}")
+    print(f"ECE : {results['ece']:.4f}")
     print()
     print("=" * 100)
     print()

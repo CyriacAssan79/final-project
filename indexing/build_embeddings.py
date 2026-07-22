@@ -168,6 +168,9 @@ def main():
                 batch_texts
             )
 
+            if embedding_dimension is None:
+                embedding_dimension = int(embeddings.shape[1])
+
             save_batch(
                 embeddings,
                 OUTPUT_DIR,
@@ -185,6 +188,9 @@ def main():
             model,
             batch_texts
         )
+
+        if embedding_dimension is None:
+            embedding_dimension = int(embeddings.shape[1])
 
         save_batch(
             embeddings,
@@ -206,4 +212,5 @@ def main():
     print(f"Chunks traités : {total_chunks}")
     print(f"Batches créés  : {batch_index}")
 
-main()
+if __name__ == "__main__":
+    main()

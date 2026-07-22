@@ -58,7 +58,7 @@ def insert_chunk(connection: sqlite3.Connection, chunk: dict) -> None:
 
     connection.execute(
         """
-        INSERT INTO chunks (
+        INSERT OR REPLACE INTO chunks (
             chunk_id,
             doc_id,
             title,
