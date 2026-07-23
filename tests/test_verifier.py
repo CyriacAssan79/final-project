@@ -9,10 +9,14 @@ class FakeVerifier(Verifier):
         self.id2label = {}
         self.model_name = "fake-nli"
 
-    def predict(self, claim: str, evidence: str) -> dict:
-        if not self.responses:
+    def predict_batch(self, claim: str, evidence_texts: list[str]) -> list[dict]:
+        if len(self.responses) < len(evidence_texts):
             raise AssertionError("No fake NLI response left.")
-        return self.responses.pop(0)
+        batch, self.responses = (
+            self.responses[: len(evidence_texts)],
+            self.responses[len(evidence_texts) :],
+        )
+        return batch
 
 
 class VerifierTest(unittest.TestCase):

@@ -27,34 +27,45 @@ class Verifier:
         self.id2label = dict(self.model.config.id2label)
 
     def predict(self, claim: str, evidence: str) -> dict:
+        return self.predict_batch(claim, [evidence])[0]
+
+    def predict_batch(self, claim: str, evidence_texts: list[str]) -> list[dict]:
         claim = claim.strip()
-        evidence = evidence.strip()
         if not claim:
             raise ValueError("Claim must not be empty.")
-        if not evidence:
+
+        evidence_texts = [text.strip() for text in evidence_texts]
+        if any(not text for text in evidence_texts):
             raise ValueError("Evidence text must not be empty.")
+        if not evidence_texts:
+            return []
 
         inputs = self.tokenizer(
-            evidence,
-            claim,
+            evidence_texts,
+            [claim] * len(evidence_texts),
             return_tensors="pt",
             truncation=True,
             max_length=512,
+            padding=True,
         )
 
         with torch.no_grad():
             outputs = self.model(**inputs)
 
-        probabilities = torch.softmax(outputs.logits, dim=1)[0]
-        predicted_id = torch.argmax(probabilities).item()
-        nli_label = self.id2label[predicted_id]
-        confidence = probabilities[predicted_id].item()
+        probabilities = torch.softmax(outputs.logits, dim=1)
+        predicted_ids = torch.argmax(probabilities, dim=1)
 
-        return {
-            "label": nli_label,
-            "confidence": confidence,
-            "probabilities": probabilities.tolist(),
-        }
+        results = []
+        for row_probabilities, predicted_id_tensor in zip(probabilities, predicted_ids):
+            predicted_id = predicted_id_tensor.item()
+            results.append(
+                {
+                    "label": self.id2label[predicted_id],
+                    "confidence": row_probabilities[predicted_id].item(),
+                    "probabilities": row_probabilities.tolist(),
+                }
+            )
+        return results
 
     def convert_to_fever_label(self, nli_label: str) -> str:
         label = nli_label.lower()
@@ -66,22 +77,35 @@ class Verifier:
         return "NOT ENOUGH INFO"
 
     def analyze_passage(self, claim: str, passage: dict) -> dict:
-        result = self.predict(claim=claim, evidence=passage["text"])
-        fever_label = self.convert_to_fever_label(result["label"])
+        return self.analyze_passages(claim=claim, passages=[passage])[0]
 
-        return {
-            "chunk_id": passage.get("chunk_id"),
-            "doc_id": passage["doc_id"],
-            "title": passage.get("title", passage["doc_id"].replace("_", " ")),
-            "text": passage["text"],
-            "sentence_ids": passage.get("sentence_ids", []),
-            "retrieval_score": passage.get("score"),
-            "rerank_score": passage.get("rerank_score"),
-            "nli_label": result["label"],
-            "fever_label": fever_label,
-            "confidence": result["confidence"],
-            "probabilities": result["probabilities"],
-        }
+    def analyze_passages(self, claim: str, passages: list[dict]) -> list[dict]:
+        if not passages:
+            return []
+
+        results = self.predict_batch(
+            claim, [passage["text"] for passage in passages]
+        )
+
+        analyzed = []
+        for passage, result in zip(passages, results):
+            fever_label = self.convert_to_fever_label(result["label"])
+            analyzed.append(
+                {
+                    "chunk_id": passage.get("chunk_id"),
+                    "doc_id": passage["doc_id"],
+                    "title": passage.get("title", passage["doc_id"].replace("_", " ")),
+                    "text": passage["text"],
+                    "sentence_ids": passage.get("sentence_ids", []),
+                    "retrieval_score": passage.get("score"),
+                    "rerank_score": passage.get("rerank_score"),
+                    "nli_label": result["label"],
+                    "fever_label": fever_label,
+                    "confidence": result["confidence"],
+                    "probabilities": result["probabilities"],
+                }
+            )
+        return analyzed
 
     def aggregate_predictions(self, predictions: list[dict]) -> dict:
         label_scores = {
@@ -114,12 +138,7 @@ class Verifier:
         }
 
     def verify(self, claim: str, evidence: list[dict]) -> dict:
-        predictions = [
-            self.analyze_passage(claim=claim, passage=passage)
-            for passage in evidence
-        ]
-
-        if not predictions:
+        if not evidence:
             return {
                 "label": "NOT ENOUGH INFO",
                 "confidence": 0.0,
@@ -132,6 +151,7 @@ class Verifier:
                 "evidence": [],
             }
 
+        predictions = self.analyze_passages(claim=claim, passages=evidence)
         aggregated_result = self.aggregate_predictions(predictions)
 
         return {
