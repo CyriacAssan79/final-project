@@ -3,5 +3,6 @@
 
   Local URL: http://localhost:8501
   Network URL: http://172.23.166.27:8501
+  External URL: http://102.203.40.81:8501
 
   Detected WSL. Using poll-based file watching for better compatibility. To force watchdog, set server.fileWatcherType = "watchdog".
